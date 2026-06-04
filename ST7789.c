@@ -177,8 +177,8 @@ void ST7789_Init(uint16_t Back_color,uint16_t Pen_color){
 	OLED_RST(1);
 	Delay_ms(120);
 
-	ST7789_WR_REG(0x36); 
-	ST7789_WR_DATA8(0x00);
+	ST7789_WR_REG(0x36);
+	ST7789_WR_DATA8(0x60);  // MV=1, MX=1
 
 	ST7789_WR_REG(0x3A); 
 	ST7789_WR_DATA8(0x05);
