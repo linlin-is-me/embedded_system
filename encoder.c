@@ -43,30 +43,38 @@ void Encoder_Init(void)
 
 void Key_Scan_10ms(void)
 {
+    static uint8_t debounce_cnt = 0;
     if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2) == Bit_RESET)
     {
-        if (key_pressed == 0)
+        debounce_cnt++;
+        if (debounce_cnt >= 5)  // 连续5次LOW(50ms)才确认按下, 滤除旋转噪声
         {
-            key_pressed    = 1;
-            press_duration = 0;
-        }
-        else
-        {
-            press_duration += 10;
-            if (press_duration >= 2000 && key_pressed == 1)
+            if (key_pressed == 0)
             {
-                key_event  = 2;
-                key_pressed = 2;
+                key_pressed    = 1;
+                press_duration = 50;  // 已确认50ms(5次扫描)
+            }
+            else
+            {
+                press_duration += 10;
+                if (press_duration >= 2000 && key_pressed == 1)
+                {
+                    key_event  = 2;
+                    encoder_delta = 0;  // 按键时清旋转假信号
+                    key_pressed = 2;
+                }
             }
         }
     }
     else
     {
+        debounce_cnt = 0;
         if (key_pressed == 1)
         {
-            if (press_duration >= 50 && press_duration < 500)
+            if (press_duration >= 80 && press_duration < 500)
             {
                 key_event = 1;
+                encoder_delta = 0;  // 按键时清旋转假信号
             }
         }
         key_pressed    = 0;

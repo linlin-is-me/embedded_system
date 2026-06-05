@@ -40,9 +40,6 @@ static void ST7789_WR_DATA8(uint16_t da){ // 8-bit data
 	#if ENABLE_CS
 		OLED_CS(0);
 	#endif
-	#if !SoftWare_SPI
-		SPI_WaitIdle();
-	#endif
 	#if Fast_Mode
 		GPIOB->BSRR = DC_Pin(10);  // ֱ�Ӳ����Ĵ���, ���� DC=1 (data)
 	#else
@@ -56,9 +53,6 @@ static void ST7789_WR_DATA8(uint16_t da){ // 8-bit data
 static void ST7789_WR_DATA(int da){
 	#if ENABLE_CS
 		OLED_CS(0);
-	#endif
-	#if !SoftWare_SPI
-		SPI_WaitIdle();
 	#endif
     #if Fast_Mode
 		GPIOB->BSRR = DC_Pin(10);//Ϊ�˼���ļӿ��ٶȣ�������ֱ��ʹ�üĴ�������,��������ָPB10(1)
@@ -74,9 +68,6 @@ static void ST7789_WR_DATA(int da){
 static void ST7789_WR_REG(uint16_t da)	 {
 	#if ENABLE_CS
 		OLED_CS(0);
-	#endif
-	#if !SoftWare_SPI
-		SPI_WaitIdle();
 	#endif
     #if Fast_Mode
 		GPIOB->BRR = DC_Pin(10);//Ϊ�˼���ļӿ��ٶȣ�������ֱ��ʹ�üĴ�������,��������ָPB10(0)
@@ -131,12 +122,12 @@ void ST7789_Cursor(unsigned int x1,unsigned int y1,unsigned int x2,unsigned int 
    ST7789_WR_REG(0x2a);
    ST7789_WR_DATA(x1);
    ST7789_WR_DATA(x2);
-  
+
    ST7789_WR_REG(0x2b);
    ST7789_WR_DATA(y1);
    ST7789_WR_DATA(y2);
 
-   ST7789_WR_REG(0x2C);					 						 
+   ST7789_WR_REG(0x2C);
 }
 
 void ST7789_Init(uint16_t Back_color,uint16_t Pen_color){
@@ -178,7 +169,7 @@ void ST7789_Init(uint16_t Back_color,uint16_t Pen_color){
 	Delay_ms(120);
 
 	ST7789_WR_REG(0x36);
-	ST7789_WR_DATA8(0x60);  // MV=1, MX=1
+	ST7789_WR_DATA8(0x80);  // MV=0, MY=1: 320W×170H, MY硬件消镜像
 
 	ST7789_WR_REG(0x3A); 
 	ST7789_WR_DATA8(0x05);
@@ -271,6 +262,15 @@ void ST7789_SetRotation(uint8_t Diraction){
 	}
 }
 
+void ST7789_Clear170(uint16_t Color){
+	uint16_t i,j;
+	ST7789_Cursor(0,0,169,319);   // 0x20: 240W x 170H, GRAM列限制240
+	for(j=0;j<320;j++){
+		for(i=0;i<170;i++){
+			ST7789_WR_DATA(Color);
+		}
+	}
+}
 void ST7789_Clear(uint16_t Color){
 	uint16_t i,j;  	
 	ST7789_Cursor(0,0,ST7789_W-1,ST7789_H-1);
@@ -350,9 +350,6 @@ void ST7789_Fill(uint16_t xsta,uint16_t ysta,uint16_t xend,uint16_t yend,uint16_
 		SendBuff[i+1] = color;
 	}
 
-	#if !SoftWare_SPI
-	SPI_WaitIdle();
-	#endif
 	OLED_DC(1);
 
 	for(i = 0;i<height;i++){
@@ -438,39 +435,34 @@ void ST7789_ShowChar(uint16_t x,uint16_t y,uint8_t num,uint8_t mode)
 {
     uint8_t temp;
     uint8_t pos,t;
-	uint16_t x0=x;
-	uint16_t colortemp=POINT_COLOR;      
-    if(x>ST7789_W-16||y>ST7789_H-16)return;	    
-	//���ô���		   
-	num=num-' ';//�õ�ƫ�ƺ��ֵ
-	ST7789_Cursor(x,y,x+8-1,y+16-1);      //���ù��λ�� 
-	if(!mode) //�ǵ��ӷ�ʽ
-	{
-		for(pos=0;pos<16;pos++)
-		{ 
-			temp=asc2_1608[(uint16_t)num*16+pos];		 //����1608����
-			for(t=0;t<8;t++){
-		        if(temp&0x01)POINT_COLOR=colortemp;
-				else POINT_COLOR=BACK_COLOR;
-				ST7789_WR_DATA(POINT_COLOR);
-				temp>>=1;
-				x++;
-		    }
-			x=x0;
-			y++;
-		}	
-	}else{//���ӷ�ʽ
-		for(pos=0;pos<16;pos++)
-		{
-		    temp=asc2_1608[(uint16_t)num*16+pos];		 //����1608����
-			for(t=0;t<8;t++){        
-		        if(temp&0x01)ST7789_DrawPoint(x+t,y+pos);//��һ����     
-		        temp>>=1; 
-		    }
-		}
-	}
-	POINT_COLOR=colortemp;	    	   	 	  
-}   
+    uint16_t colortemp=POINT_COLOR;
+    if(x>ST7789_W-16||y>ST7789_H-8)return; /* MV=0: 16tall(X) x 8wide(Y) */
+    num=num-' ';
+    ST7789_Cursor(x,y,x+15,y+7);      /* 16X(垂直) x 8Y(水平) */
+    if(!mode) /* non-overlay */
+    {
+        for(pos=0;pos<8;pos++)        /* Y: 8 horizontal positions */
+        {
+            for(t=0;t<16;t++)         /* X: 16 vertical, font rows */
+            {
+                temp=asc2_1608[(uint16_t)num*16+t];
+                if(temp&(0x01<<pos))POINT_COLOR=colortemp;
+                else POINT_COLOR=BACK_COLOR;
+                ST7789_WR_DATA(POINT_COLOR);
+            }
+        }
+    }else{ /* overlay mode */
+        for(pos=0;pos<8;pos++)
+        {
+            for(t=0;t<16;t++)
+            {
+                temp=asc2_1608[(uint16_t)num*16+t];
+                if(temp&(0x01<<pos))ST7789_DrawPoint(x+t,y+pos);
+            }
+        }
+    }
+    POINT_COLOR=colortemp;
+}
 
 uint32_t mypow(uint8_t m,uint8_t n)
 {
@@ -488,38 +480,29 @@ void ST7789_ShowNum(uint16_t x,uint16_t y,uint32_t num,uint8_t len){
 		temp=(num/mypow(10,len-t-1))%10;
 		if(enshow==0&&t<(len-1)){
 			if(temp==0){
-				ST7789_ShowChar(x+8*t,y,' ',0);
+				ST7789_ShowChar(x,y+8*t,' ',0);
 				continue;
 			}else enshow=1;  	 
 		}
-	 	ST7789_ShowChar(x+8*t,y,temp+48,0); 
+	 	ST7789_ShowChar(x,y+8*t,temp+48,0); 
 	}
 } 
 
 void ST7789_ShowString(uint16_t x,uint16_t y,char *p)
-{         
-    while(*p!='\0'){      
-        if(x>ST7789_W-16){x=0;y+=16;}
-        if(y>ST7789_H-16){y=x=0;ST7789_Clear(RED);}
+{
+    while(*p!='\0'){
+        if(y>ST7789_H-8){y=0;x+=16;} /* MV=0: Y水平推进，超界换行 */
+        if(x>ST7789_W-16){return;}   /* X垂直超界停止 */
         ST7789_ShowChar(x,y,*p,0);
-        x+=8;
+        y+=8;  /* 水平推进 (MV=0: Y=水平轴) */
         p++;
-    }  
-}
-
-void ST7789_Printf(uint16_t X, uint16_t Y,const char* format, ...){
-	char String[256];
-	va_list arg;
-	va_start(arg, format);
-	vsprintf(String, format, arg);
-	va_end(arg);
-	ST7789_ShowString(X, Y, String);
+    }
 }
 
 void ST7789_SlowPrint(uint16_t x,uint16_t y,const char* string){
   while (*string!='\0'){
     ST7789_ShowChar(x,y,*string,1);
-    x+=8;
+    y+=8;
     string++;
     Delay_ms(100);
   }
